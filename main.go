@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/johnxiaoyi/appstarter/app"
-	"github.com/johnxiaoyi/appstarter/domain"
+	"github.com/amzfans/appstarter/app"
+	"github.com/amzfans/appstarter/domain"
 	"log"
 	"os"
 	"os/signal"
@@ -44,15 +44,23 @@ func main() {
 	for {
 		select {
 		case <-dsServer.NeedStop:
-			log.Println("Shutdown the domain socket server and kill the underline application.")
-			dsServer.Stop()
-			application.Cmd.Process.Kill()
-		case osSig := <-killChan:
-			log.Println("Shutdown the domain socket server and the underline application.")
-			dsServer.Stop()
-			application.Cmd.Process.Signal(osSig)
-			return
+			shutdown(dsServer, application)
+		case <-killChan:
+			shutdown(dsServer, application)
 		}
 	}
 
+}
+
+func shutdown(dsServer *domain.DomainSocketServer, application *app.Application) {
+	log.Println("Shutdown the domain socket server and kill the underline application.")
+	if !application.Cmd.ProcessState.Exited() {
+		log.Println("Need to kill the app.")
+		application.Cmd.Process.Kill()
+		log.Println("The app is killed.")
+	} else {
+		log.Println("The application is exited.")
+	}
+	dsServer.Stop()
+	os.Exit(0)
 }

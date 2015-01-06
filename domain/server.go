@@ -13,6 +13,8 @@ type DomainSocketServer struct {
 	StderrDataChan chan []byte
 	NeedStop       chan bool
 	stopping       chan bool
+	stdoutListener net.Listener
+	stderrListener net.Listener
 }
 
 func NewServer(stdoutPath, stderrPath string) *DomainSocketServer {
@@ -21,8 +23,8 @@ func NewServer(stdoutPath, stderrPath string) *DomainSocketServer {
 		stderrPath:     stderrPath,
 		StdoutDataChan: make(chan []byte),
 		StderrDataChan: make(chan []byte),
-		NeedStop:       make(chan bool),
-		stopping:       make(chan bool),
+		NeedStop:       make(chan bool, 1),
+		stopping:       make(chan bool, 1),
 	}
 }
 
@@ -32,56 +34,73 @@ func (dsServer *DomainSocketServer) Start() (err error) {
 		return
 	}
 
-	stdoutListener, err := net.Listen("unix", dsServer.stdoutPath)
+	dsServer.stdoutListener, err = net.Listen("unix", dsServer.stdoutPath)
 	if err != nil {
 		return
 	}
-	stderrListener, err := net.Listen("unix", dsServer.stderrPath)
+	dsServer.stderrListener, err = net.Listen("unix", dsServer.stderrPath)
 	if err != nil {
 		return
 	}
 
-	go dsServer.forwardToClient(stdoutListener, false)
-	go dsServer.forwardToClient(stderrListener, true)
+	go dsServer.forwardToClient(false)
+	go dsServer.forwardToClient(true)
 
 	return
 }
 
-func (dsServer *DomainSocketServer) forwardToClient(ls net.Listener, isStdErr bool) {
+func (dsServer *DomainSocketServer) forwardToClient(isStdErr bool) {
+	ls := dsServer.stdoutListener
+	dataChan := dsServer.StdoutDataChan
+	if isStdErr {
+		ls = dsServer.stderrListener
+		dataChan = dsServer.StderrDataChan
+	}
 	defer ls.Close()
 	// only accept one client.
+	log.Println("Waiting for client...")
 	conn, err := ls.Accept()
+	log.Println("Accept the client or get the erro.")
 	if err != nil {
 		log.Printf("ERR: Cannot accept the client connection as %s.", err.Error())
-		dsServer.NeedStop <- true
-		return
-	}
-
-	var dataChan chan []byte
-	if isStdErr {
-		dataChan = dsServer.StderrDataChan
-	} else {
-		dataChan = dsServer.StdoutDataChan
-	}
-
-	for byteData := range dataChan {
 		select {
-		case <-dsServer.stopping:
+		case dsServer.NeedStop <- true:
 			return
 		default:
-			_, werr := conn.Write(byteData)
-			if werr != nil {
-				log.Printf("ERR: Cannot send the data via client connection as %s.", werr.Error())
-				dsServer.NeedStop <- true
-				return
-			}
+			log.Println("Return for erro.")
+			return	
 		}
+	}
+	defer conn.Close()
+	for {
+		select {
+	        case byteData := <-dataChan:
+        	        _, werr := conn.Write(byteData)
+	                if werr != nil {
+                        	log.Printf("ERR: Cannot send the data via client connection as %s.", werr.Error())
+                        	select {
+				case dsServer.NeedStop <- true:
+					return
+				default:
+					return
+				}
+        	        }
+		case <-dsServer.stopping:
+			log.Println("The socket server is stopping.")
+			return
+	        }
 
 	}
 }
 
 func (dsServer *DomainSocketServer) Stop() {
 	dsServer.stopping <- true
+	if dsServer.stdoutListener != nil {
+		dsServer.stdoutListener.Close()
+	}
+	if dsServer.stderrListener != nil {
+		dsServer.stderrListener.Close()
+	}
 	close(dsServer.StdoutDataChan)
 	close(dsServer.StderrDataChan)
 }

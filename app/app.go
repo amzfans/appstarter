@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/johnxiaoyi/appstarter/domain"
+	"github.com/amzfans/appstarter/domain"
 	"io"
 	"log"
 	"os/exec"
@@ -49,6 +49,8 @@ func (a *Application) Start() (err error) {
 
 	go func() {
 		werr := a.Cmd.Wait()
+		// for testing
+		log.Println("The application command is completed.")
 		if werr != nil {
 			log.Printf("ERR: The cmd err is %s.", err.Error())
 		}
@@ -80,10 +82,7 @@ func (a *Application) writeStdDataToServer(isStderr bool) {
 		default:
 			// just let it go.
 			// for testing
-			for bd := range buffer[0:count] {
-				log.Print(bd, ",")
-			}
-			log.Println()
+			log.Printf("%v\n", buffer[0:count])
 		}
 
 	}
