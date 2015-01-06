@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"github.com/amzfans/appstarter/utils"
 	"log"
 	"net"
 )
@@ -58,43 +59,34 @@ func (dsServer *DomainSocketServer) forwardToClient(isStdErr bool) {
 	}
 	defer ls.Close()
 	// only accept one client.
-	log.Println("Waiting for client...")
 	conn, err := ls.Accept()
-	log.Println("Accept the client or get the erro.")
 	if err != nil {
 		log.Printf("ERR: Cannot accept the client connection as %s.", err.Error())
-		select {
-		case dsServer.NeedStop <- true:
-			return
-		default:
-			log.Println("Return for erro.")
-			return	
-		}
+		utils.SendToNoBlockBoolChannel(dsServer.NeedStop, true)
 	}
 	defer conn.Close()
 	for {
 		select {
-	        case byteData := <-dataChan:
-        	        _, werr := conn.Write(byteData)
-	                if werr != nil {
-                        	log.Printf("ERR: Cannot send the data via client connection as %s.", werr.Error())
-                        	select {
-				case dsServer.NeedStop <- true:
-					return
-				default:
-					return
-				}
-        	        }
+		case byteData := <-dataChan:
+			_, werr := conn.Write(byteData)
+			if werr != nil {
+				log.Printf("ERR: Cannot send the data via client connection as %s.", werr.Error())
+				utils.SendToNoBlockBoolChannel(dsServer.NeedStop, true)
+			}
 		case <-dsServer.stopping:
 			log.Println("The socket server is stopping.")
 			return
-	        }
+		}
 
 	}
 }
 
 func (dsServer *DomainSocketServer) Stop() {
-	dsServer.stopping <- true
+	if !utils.SendToNoBlockBoolChannel(dsServer.stopping, true) {
+		log.Println("The server is stopping...")
+		return
+	}
+
 	if dsServer.stdoutListener != nil {
 		dsServer.stdoutListener.Close()
 	}

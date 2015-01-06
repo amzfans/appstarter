@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/amzfans/appstarter/domain"
+	"github.com/amzfans/appstarter/utils"
 	"io"
 	"log"
 	"os/exec"
@@ -16,6 +17,7 @@ type Application struct {
 	stdout    io.ReadCloser
 	stderr    io.ReadCloser
 	dsServer  *domain.DomainSocketServer
+	NeedStop  chan bool
 }
 
 func NewApp(dsServer *domain.DomainSocketServer, cmdString string, args ...string) *Application {
@@ -23,6 +25,7 @@ func NewApp(dsServer *domain.DomainSocketServer, cmdString string, args ...strin
 		cmdString: cmdString,
 		args:      args,
 		dsServer:  dsServer,
+		NeedStop:  make(chan bool, 1),
 	}
 }
 
@@ -49,11 +52,10 @@ func (a *Application) Start() (err error) {
 
 	go func() {
 		werr := a.Cmd.Wait()
-		// for testing
-		log.Println("The application command is completed.")
 		if werr != nil {
 			log.Printf("ERR: The cmd err is %s.", err.Error())
 		}
+		utils.SendToNoBlockBoolChannel(a.NeedStop, true)
 	}()
 
 	return
@@ -73,6 +75,7 @@ func (a *Application) writeStdDataToServer(isStderr bool) {
 		count, err := rc.Read(buffer)
 		if err != nil {
 			log.Printf("ERR: Cannot read the data for the application's stdout or stderr as %s.", err.Error())
+			utils.SendToNoBlockBoolChannel(a.NeedStop, true)
 			return
 		}
 
@@ -81,10 +84,7 @@ func (a *Application) writeStdDataToServer(isStderr bool) {
 			// send the data to server's data channel.
 		default:
 			// just let it go.
-			// for testing
-			log.Printf("%v\n", buffer[0:count])
 		}
 
 	}
 }
-	

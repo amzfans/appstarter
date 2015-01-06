@@ -44,23 +44,25 @@ func main() {
 	for {
 		select {
 		case <-dsServer.NeedStop:
-			shutdown(dsServer, application)
-		case <-killChan:
-			shutdown(dsServer, application)
+			shutdown(dsServer, application, nil)
+		case <-application.NeedStop:
+			shutdown(dsServer, application, nil)
+		case osSig := <-killChan:
+			shutdown(dsServer, application, osSig)
 		}
 	}
 
 }
 
-func shutdown(dsServer *domain.DomainSocketServer, application *app.Application) {
+func shutdown(dsServer *domain.DomainSocketServer, application *app.Application, osSig os.Signal) {
 	log.Println("Shutdown the domain socket server and kill the underline application.")
-	if !application.Cmd.ProcessState.Exited() {
-		log.Println("Need to kill the app.")
-		application.Cmd.Process.Kill()
-		log.Println("The app is killed.")
-	} else {
-		log.Println("The application is exited.")
-	}
 	dsServer.Stop()
+	if !application.Cmd.ProcessState.Exited() {
+		if osSig != nil {
+			application.Cmd.Process.Signal(osSig)
+		} else {
+			application.Cmd.Process.Kill()
+		}
+	}
 	os.Exit(0)
 }
