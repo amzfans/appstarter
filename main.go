@@ -57,7 +57,7 @@ func main() {
 func shutdown(dsServer *domain.DomainSocketServer, application *app.Application, osSig os.Signal) {
 	log.Println("Shutdown the domain socket server and kill the underline application.")
 	dsServer.Stop()
-	if !application.Cmd.ProcessState.Exited() {
+	if application.Cmd.ProcessState != nil && !application.Cmd.ProcessState.Exited() {
 		if osSig != nil {
 			application.Cmd.Process.Signal(osSig)
 		} else {
