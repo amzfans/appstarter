@@ -53,7 +53,7 @@ func (a *Application) Start() (err error) {
 	go func() {
 		werr := a.Cmd.Wait()
 		if werr != nil {
-			log.Printf("ERR: The cmd err is %s.", err.Error())
+			log.Printf("ERR: The cmd err is %s.", werr.Error())
 		}
 		utils.SendToNoBlockBoolChannel(a.NeedStop, true)
 	}()

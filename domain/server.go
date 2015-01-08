@@ -58,26 +58,30 @@ func (dsServer *DomainSocketServer) forwardToClient(isStdErr bool) {
 		dataChan = dsServer.StderrDataChan
 	}
 	defer ls.Close()
-	// only accept one client.
-	conn, err := ls.Accept()
-	if err != nil {
-		log.Printf("ERR: Cannot accept the client connection as %s.", err.Error())
-		utils.SendToNoBlockBoolChannel(dsServer.NeedStop, true)
-	}
-	defer conn.Close()
-	for {
-		select {
-		case byteData := <-dataChan:
-			_, werr := conn.Write(byteData)
-			if werr != nil {
-				log.Printf("ERR: Cannot send the data via client connection as %s.", werr.Error())
-				utils.SendToNoBlockBoolChannel(dsServer.NeedStop, true)
-			}
-		case <-dsServer.stopping:
-			log.Println("The socket server is stopping.")
-			return
-		}
 
+	for {
+		conn, err := ls.Accept()
+		if err != nil {
+			log.Printf("ERR: Cannot accept the client connection as %s.", err.Error())
+			utils.SendToNoBlockBoolChannel(dsServer.NeedStop, true)
+		}
+		go func(connt net.Conn) {
+			defer connt.Close()
+			for {
+				select {
+				case byteData := <-dataChan:
+					_, werr := connt.Write(byteData)
+					if werr != nil {
+						log.Printf("ERR: Cannot send the data to %s as %s.", connt.RemoteAddr().String(), werr.Error())
+						return
+					}
+				case <-dsServer.stopping:
+					log.Println("The socket server is stopping.")
+					return
+				}
+
+			}
+		}(conn)
 	}
 }
 
